@@ -1,3 +1,9 @@
+# Development setup
+
+- [Python source development with Docker dependencies (中文执行手册)](../../docs/python-docker-development.zh.md)
+- `start-python-dev.sh`: start the Python API and ingestion worker after following the setup guide.
+- [Windows BGE-M3 model service installer](setup-bge-m3.md)
+
 # Database Scripts
 
 This directory contains database-related utility scripts for RAGFlow.
