@@ -1097,20 +1097,46 @@ class RAGFlowPdfParser:
 
         self.boxes = self._assign_column(self.boxes, zoomin=zoomin)
 
-        pages = defaultdict(lambda: defaultdict(list))
+        pages = defaultdict(list)
         for b in self.boxes:
-            pg = b["page_number"]
-            col = b.get("col_id", 0)
-            pages[pg][col].append(b)
-
-        for pg in pages:
-            for col in pages[pg]:
-                pages[pg][col].sort(key=lambda x: (x["top"], x["x0"]))
+            pages[b["page_number"]].append(b)
 
         new_boxes = []
-        for pg in sorted(pages.keys()):
-            for col in sorted(pages[pg].keys()):
-                new_boxes.extend(pages[pg][col])
+        for pg in sorted(pages):
+            boxes = pages[pg]
+            layout_columns = defaultdict(list)
+            for b in boxes:
+                if b.get("layoutno"):
+                    layout_columns[b["layoutno"]].append(b.get("col_id", 0))
+            layout_columns = {layout: Counter(columns).most_common(1)[0][0] for layout, columns in layout_columns.items()}
+
+            def column(box, layout_columns=layout_columns):
+                # An indented or short OCR line still belongs to its paragraph.
+                return layout_columns.get(box.get("layoutno"), box.get("col_id", 0))
+
+            centers = defaultdict(list)
+            for b in boxes:
+                centers[column(b)].append((b["x0"] + b["x1"]) / 2)
+            centers = [np.median(values) for values in centers.values()]
+            spanning = []
+            remaining = []
+            for b in boxes:
+                if sum(b["x0"] < center < b["x1"] for center in centers) > 1:
+                    spanning.append(b)
+                else:
+                    remaining.append(b)
+
+            def reading_order(box):
+                return column(box), box["top"], box["x0"]
+
+            # Full-width titles and footers delimit column runs; they must not
+            # be placed at the end of the left column, between body paragraphs.
+            for b in sorted(spanning, key=lambda box: (box["top"], box["x0"])):
+                above = [box for box in remaining if box["top"] < b["top"]]
+                remaining = [box for box in remaining if box["top"] >= b["top"]]
+                new_boxes.extend(sorted(above, key=reading_order))
+                new_boxes.append(b)
+            new_boxes.extend(sorted(remaining, key=reading_order))
 
         self.boxes = new_boxes
 
