@@ -39,6 +39,8 @@ export const formSchema = z
         tag_kb_ids: z.array(z.string()).nullish(),
         topn_tags: z.number().optional(),
         image_table_context_window: z.number().optional(),
+        table_context_size: z.number().optional(),
+        image_context_size: z.number().optional(),
         overlapped_percent: z.number().optional(),
         // MinerU-specific options
         mineru_parse_method: z.enum(['auto', 'txt', 'ocr']).optional(),

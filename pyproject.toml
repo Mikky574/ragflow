@@ -271,6 +271,8 @@ exclude-dependencies = [
     "agentrun-mem0ai",
 ]
 override-dependencies = [
+    # graspologic pins NumPy 1.x, which does not support Python 3.13.
+    "numpy>=2.1,<2.3",
     # moodlepy<=0.24.1 pins attrs<23.0.0, but trio>=0.26.0 requires attrs>=23.2.0.
     # attrs 23.x is backward-compatible; moodlepy works fine at runtime with it.
     "attrs>=23.2.0",

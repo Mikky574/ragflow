@@ -1,0 +1,23 @@
+﻿services:
+  bge-m3:
+    image: ghcr.io/huggingface/text-embeddings-inference:1.8
+    command:
+      ["--model-id", "/model", "--dtype", "float16", "--pooling", "cls", "--max-batch-tokens", "8192", "--max-batch-requests", "8", "--max-client-batch-size", "16", "--max-concurrent-requests", "16", "--auto-truncate"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    environment:
+      OMP_NUM_THREADS: "4"
+    volumes:
+      - ../.cache/models/bge-m3:/model:ro
+    ports:
+      - "127.0.0.1:6380:80"
+    mem_limit: 5g
+    cpus: 4
+    networks:
+      - ragflow
+    restart: unless-stopped
