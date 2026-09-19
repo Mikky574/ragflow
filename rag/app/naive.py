@@ -904,15 +904,15 @@ class Pdf(PdfParser):
 
         if separate_tables_figures:
             tbls, figures = self._extract_table_figure(True, zoomin, True, True, True)
-            self._concat_downward()
+            self._final_reading_order_merge(zoomin)
             logging.info("layouts cost: {}s".format(timer() - first_start))
             return [(b["text"], self._line_tag(b, zoomin)) for b in self.boxes], tbls, figures
         else:
             tbls = self._extract_table_figure(True, zoomin, True, True)
             self._naive_vertical_merge()
-            self._concat_downward()
-            # self._final_reading_order_merge()
-            # self._filter_forpages()
+            # Figures can push the left column below the right column's start.
+            # Restore column order before the sections are packed into chunks.
+            self._final_reading_order_merge(zoomin)
             logging.info("layouts cost: {}s".format(timer() - first_start))
             return [(b["text"], self._line_tag(b, zoomin)) for b in self.boxes], tbls
 

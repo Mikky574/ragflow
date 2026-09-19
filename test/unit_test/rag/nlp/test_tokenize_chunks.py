@@ -44,6 +44,14 @@ def test_tokenize_chunks_removes_one_leading_newline_from_parent(chunk, parent):
 
 
 @pytest.mark.p2
+def test_tokenize_chunks_does_not_create_parent_for_an_unsplit_chunk():
+    docs = nlp.tokenize_chunks(["one paragraph"], {}, True, child_delimiters_pattern="\n\n")
+
+    assert [doc["content_with_weight"] for doc in docs] == ["one paragraph"]
+    assert "mom_with_weight" not in docs[0]
+
+
+@pytest.mark.p2
 def test_doc_tokenize_chunks_with_images_removes_leading_newline_from_parent():
     docs = nlp.doc_tokenize_chunks_with_images([{"text": "\nfirst\nsecond", "ck_type": "text"}], {}, True, child_delimiters_pattern="\n")
 

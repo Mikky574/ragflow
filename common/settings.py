@@ -514,6 +514,17 @@ def init_settings():
 
 def check_and_install_torch():
     global PARALLEL_DEVICES
+    ocr_device = os.getenv("OCR_DEVICE", os.getenv("DEVICE", "cpu")).lower()
+    if ocr_device != "cpu":
+        try:
+            import onnxruntime as ort
+
+            if "CUDAExecutionProvider" in ort.get_available_providers():
+                PARALLEL_DEVICES = max(1, int(os.getenv("OCR_PARALLEL_DEVICES", "1")))
+                logging.info("using %s GPU(s) for ONNX Runtime OCR", PARALLEL_DEVICES)
+                return
+        except Exception:
+            logging.exception("ONNX Runtime GPU OCR initialization failed")
     try:
         pip_install_torch()
         import torch.cuda

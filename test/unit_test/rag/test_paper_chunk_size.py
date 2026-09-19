@@ -24,7 +24,7 @@ as one oversized chunk.
 import pytest
 
 import rag.app.paper as paper
-from rag.app.paper import _merge_sections_by_pivot
+from rag.app.paper import _apply_sentence_overlap, _extract_abstract, _merge_sections_by_pivot
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +51,29 @@ def test_nonpositive_budget_keeps_one_chunk_per_pivot():
     chunks = _merge_sections_by_pivot(_sections(10), [0] * 10, chunk_token_num=0)
     assert len(chunks) == 1
     assert len(chunks[0].split()) == 40
+
+
+def test_extract_abstract_collects_continuations_and_removes_them_from_body():
+    tag = "@@1\t1\t2\t3\t4##"
+    sections = [
+        ("Title and author\nAbstract- First abstract sentence." + tag, "text"),
+        ("Second abstract sentence." + tag, "text"),
+        ("I. INTRODUCTION\nBody starts here." + tag, "text"),
+    ]
+
+    abstract, body = _extract_abstract(sections)
+
+    assert "First abstract sentence." in abstract
+    assert "Second abstract sentence." in abstract
+    assert [text for text, _ in body] == ["Title and author" + tag, sections[2][0]]
+
+
+def test_sentence_overlap_uses_a_complete_tail_sentence(monkeypatch):
+    monkeypatch.setattr(paper, "num_tokens_from_string", lambda s: len((s or "").split()))
+
+    chunks = _apply_sentence_overlap(["First sentence. Second sentence.", "Third sentence."], 0.5)
+
+    assert chunks[1] == "Second sentence.\nThird sentence."
 
 
 @pytest.mark.p2
@@ -119,3 +142,46 @@ def test_chunk_bounds_oversized_pivot(monkeypatch):
     # A section is never split mid-way, so allow one section of slack over budget.
     assert all(len(c.split()) <= 12 + 4 for c in chunks)
     assert sum(c.count("word") for c in chunks) == 24  # nothing lost
+
+
+@pytest.mark.p2
+def test_parent_child_preserves_layout_block_boundaries(monkeypatch):
+    sections = [("first paragraph", ""), ("second paragraph", "")]
+
+    class FakePdf:
+        def __call__(self, *a, **k):
+            return {"title": "t", "authors": " ", "abstract": "", "sections": sections, "tables": []}
+
+        def remove_tag(self, s):
+            return s
+
+    captured = {}
+
+    monkeypatch.setattr(paper, "normalize_layout_recognizer", lambda x: ("DeepDOC", None))
+    monkeypatch.setattr(paper, "Pdf", FakePdf)
+    monkeypatch.setattr(paper, "vision_figure_parser_pdf_wrapper", lambda tbls, **k: tbls)
+    monkeypatch.setattr(paper, "bullets_category", lambda *_: 1)
+    monkeypatch.setattr(paper, "title_frequency", lambda bull, secs: (1, [2] * len(secs)))
+    monkeypatch.setattr(paper, "tokenize_table", lambda *a, **k: [])
+    def fake_tokenize_chunks(chunks, *a, **k):
+        captured["chunks"] = chunks
+        return []
+
+    monkeypatch.setattr(paper, "tokenize_chunks", fake_tokenize_chunks)
+
+    class FakeTok:
+        def tokenize(self, s):
+            return ""
+
+        def fine_grained_tokenize(self, s):
+            return ""
+
+    monkeypatch.setattr(paper, "rag_tokenizer", FakeTok())
+    paper.chunk(
+        "doc.pdf",
+        binary=b"x",
+        callback=lambda *a, **k: None,
+        parser_config={"chunk_token_num": 100, "layout_recognize": "DeepDOC", "children_delimiter": "`\\n\\n`"},
+    )
+
+    assert captured["chunks"] == ["first paragraph\n\nsecond paragraph"]

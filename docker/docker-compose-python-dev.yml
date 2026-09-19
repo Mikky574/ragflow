@@ -1,0 +1,53 @@
+﻿services:
+  bge-m3-gpu0:
+    image: ghcr.io/huggingface/text-embeddings-inference:1.8
+    command: ["--model-id", "/model", "--dtype", "float16", "--pooling", "cls", "--max-batch-tokens", "8192", "--max-batch-requests", "8", "--max-client-batch-size", "16", "--max-concurrent-requests", "16", "--auto-truncate"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    environment:
+      OMP_NUM_THREADS: "4"
+    volumes:
+      - ../.cache/models/bge-m3:/model:ro
+    mem_limit: 5g
+    cpus: 4
+    networks:
+      - ragflow
+    restart: unless-stopped
+
+  bge-m3-gpu1:
+    image: ghcr.io/huggingface/text-embeddings-inference:1.8
+    command: ["--model-id", "/model", "--dtype", "float16", "--pooling", "cls", "--max-batch-tokens", "8192", "--max-batch-requests", "8", "--max-client-batch-size", "16", "--max-concurrent-requests", "16", "--auto-truncate"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    environment:
+      OMP_NUM_THREADS: "4"
+    volumes:
+      - ../.cache/models/bge-m3:/model:ro
+    mem_limit: 5g
+    cpus: 4
+    networks:
+      - ragflow
+    restart: unless-stopped
+
+  bge-m3-router:
+    image: nginx:1.27-alpine
+    depends_on:
+      - bge-m3-gpu0
+      - bge-m3-gpu1
+    ports:
+      - "${BGE_M3_BIND_ADDRESS:-127.0.0.1}:${BGE_M3_PORT:-6380}:80"
+    volumes:
+      - ./nginx/bge-m3-router.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - ragflow
+    restart: unless-stopped
