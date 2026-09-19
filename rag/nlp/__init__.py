@@ -475,8 +475,15 @@ def tokenize_chunks(chunks, doc, eng, pdf_parser=None, child_delimiters_pattern=
 
         if child_delimiters_pattern:
             d["mom_with_weight"] = ck.removeprefix("\n")
-            res.extend(split_with_pattern(d, child_delimiters_pattern, ck, eng, language=language))
-            continue
+            children = split_with_pattern(d, child_delimiters_pattern, ck, eng, language=language)
+            # A parent row has value only when one parent actually yields
+            # multiple retrievable children. Otherwise it is a byte-for-byte
+            # duplicate that inflates the chunk list and search index.
+            if len(children) > 1:
+                res.extend(children)
+                continue
+            d.pop("mom_with_weight", None)
+            tokenize(d, ck, eng, language=language)
 
         tokenize(d, ck, eng, language=language)
         res.append(d)
@@ -549,6 +556,13 @@ def tokenize_chunks_with_images(chunks, doc, eng, images, child_delimiters_patte
     return res
 
 
+def _strip_leading_page_range(text):
+    """Remove a PDF page-range fragment placed immediately before table HTML."""
+    if not isinstance(text, str):
+        return text
+    return re.sub(r"^\s*\d+\s*[-–]\s*\d+\.\s*(?=<table\b)", "", text, count=1, flags=re.IGNORECASE)
+
+
 def tokenize_table(tbls, doc, eng, batch_size=10, language="English"):
     res = []
     # add tables
@@ -558,6 +572,7 @@ def tokenize_table(tbls, doc, eng, batch_size=10, language="English"):
         # Media producers use strings for tables and lists for figures. Keep
         # that contract explicit instead of guessing the type from HTML tags.
         if isinstance(rows, str):
+            rows = _strip_leading_page_range(rows)
             d = copy.deepcopy(doc)
             tokenize(d, rows, eng, language=language)
             d["content_with_weight"] = rows
@@ -573,6 +588,8 @@ def tokenize_table(tbls, doc, eng, batch_size=10, language="English"):
         for i in range(0, len(rows), batch_size):
             d = copy.deepcopy(doc)
             r = de.join(rows[i : i + batch_size])
+            if not r.strip():
+                continue
             tokenize(d, r, eng, language=language)
             d["doc_type_kwd"] = "image"
             if img is not None:
@@ -859,6 +876,11 @@ def attach_media_context(chunks, table_context_size=0, image_context_size=0):
             pieces.append(self_text)
         pieces.extend(next_ctx)
         combined = "\n".join(pieces)
+        # A standalone journal page range is neither table nor figure context.
+        # It often appears as the closest text block above a media item, so
+        # remove it only when it directly precedes the media HTML/text.
+        if is_table_chunk(ck):
+            combined = _strip_leading_page_range(combined)
 
         original = ck.get("content_with_weight")
         if "content_with_weight" in ck:
