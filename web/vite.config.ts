@@ -53,8 +53,9 @@ export default defineConfig(({ mode }) => {
     }
   }
   proxyScheme = proxyScheme || 'python';
+  const pythonApiPort = env.PYTHON_API_PORT || '9380';
 
-  console.log(`[vite.config] mode: ${mode}, API_PROXY_SCHEME: ${proxyScheme}`);
+  console.log(`[vite.config] mode: ${mode}, API_PROXY_SCHEME: ${proxyScheme}, PYTHON_API_PORT: ${pythonApiPort}`);
 
   const proxySchemes = {
     python: {
@@ -64,12 +65,12 @@ export default defineConfig(({ mode }) => {
         ws: true,
       },
       '/api': {
-        target: 'http://127.0.0.1:9380/',
+        target: `http://127.0.0.1:${pythonApiPort}/`,
         changeOrigin: true,
         ws: true,
       },
       '/v1': {
-        target: 'http://127.0.0.1:9380/',
+        target: `http://127.0.0.1:${pythonApiPort}/`,
         changeOrigin: true,
         ws: true,
       },
@@ -93,7 +94,7 @@ export default defineConfig(({ mode }) => {
         ws: true,
       },
       '/api/v1/users/me/models': {
-        target: 'http://127.0.0.1:9380/',
+        target: `http://127.0.0.1:${pythonApiPort}/`,
         changeOrigin: true,
         ws: true,
       },
@@ -109,12 +110,12 @@ export default defineConfig(({ mode }) => {
         ws: true,
       },
       '/api': {
-        target: 'http://127.0.0.1:9380/',
+        target: `http://127.0.0.1:${pythonApiPort}/`,
         changeOrigin: true,
         ws: true,
       },
       '/v1': {
-        target: 'http://127.0.0.1:9380/',
+        target: `http://127.0.0.1:${pythonApiPort}/`,
         changeOrigin: true,
         ws: true,
       },
