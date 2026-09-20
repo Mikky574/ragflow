@@ -85,16 +85,9 @@ def load_model(model_dir, nm, device_id: int | None = None):
         raise ValueError("not find model file path {}".format(model_file_path))
 
     def cuda_is_available():
-        try:
-            pip_install_torch()
-            import torch
-
-            target_id = 0 if device_id is None else device_id
-            if torch.cuda.is_available() and torch.cuda.device_count() > target_id:
-                return True
-        except Exception:
+        if os.getenv("OCR_DEVICE", os.getenv("DEVICE", "cpu")).lower() == "cpu":
             return False
-        return False
+        return "CUDAExecutionProvider" in ort.get_available_providers()
 
     options = ort.SessionOptions()
     options.enable_cpu_mem_arena = False

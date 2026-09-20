@@ -29,6 +29,76 @@ from rag.app.naive import by_plaintext, PARSERS
 from common.parser_config_utils import normalize_layout_recognizer
 
 
+_ABSTRACT_START = re.compile(r"(?im)^\s*(?:abstract|\u6458\u8981)\s*[-:\u2013\u2014]?")
+_SECTION_START = re.compile(
+    r"(?im)^\s*(?:(?:[ivxlcdm]+|\d+)\s*\.?\s*)?(?:introduction|keywords?|key\s+words?|"
+    r"conclusions?|references|acknowledg(?:e)?ments?|\u6458\u8981|\u5f15\u8a00|\u5173\u952e\u8bcd)\s*\d*\b"
+)
+
+
+_IEEE_LICENSE_FOOTER = re.compile(
+    r"(?is)\bauthorized\s+licensed\s+use.*?\bdownloaded\s+on\b.*?\brestrictions\s+apply\.?"
+)
+
+
+_MEASUREMENT_CONTINUATION = re.compile(
+    r"^\s*\d+(?:\.\d+)?\s*(?:dB(?:m|c)?|GHz|MHz|kHz|%|V|mA|W|pF|nH)\b",
+    re.IGNORECASE,
+)
+
+
+def _starts_with_measurement(text):
+    """Avoid treating a wrapped engineering value as a numbered heading."""
+    return bool(_MEASUREMENT_CONTINUATION.match(text))
+
+
+def _extract_abstract(sections):
+    """Detach an abstract, including continuation layout blocks, from the body."""
+    for index, (text, layout) in enumerate(sections):
+        match = _ABSTRACT_START.search(PdfParser.remove_tag(text))
+        if not match:
+            continue
+        tag_match = re.search(r"@@[\t0-9.-]+?##$", text)
+        tag = tag_match.group(0) if tag_match else ""
+        prefix = text[: match.start()].strip()
+        abstract = [text[match.start() :]]
+        end = index + 1
+        while end < len(sections):
+            if _SECTION_START.match(PdfParser.remove_tag(sections[end][0]).strip()):
+                break
+            abstract.append(sections[end][0])
+            end += 1
+        body = sections[:index]
+        if prefix:
+            body.append((prefix + tag, layout))
+        body.extend(sections[end:])
+        return "\n".join(abstract), body
+    return "", sections
+
+
+def _apply_sentence_overlap(chunks, overlapped_percent):
+    """Prepend complete tail sentences from the preceding Paper chunk."""
+    if overlapped_percent <= 0:
+        return chunks
+    result = []
+    for chunk in chunks:
+        if not result:
+            result.append(chunk)
+            continue
+        previous = PdfParser.remove_tag(result[-1])
+        budget = max(1, int(num_tokens_from_string(previous) * overlapped_percent))
+        sentences = [sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", previous) if sentence.strip()]
+        overlap = []
+        for sentence in reversed(sentences):
+            if num_tokens_from_string(sentence) > budget:
+                break
+            overlap.insert(0, sentence)
+            if num_tokens_from_string(" ".join(overlap)) >= budget:
+                break
+        result.append((" ".join(overlap) + "\n" if overlap else "") + chunk)
+    return result
+
+
 class Pdf(PdfParser):
     def __init__(self):
         self.model_species = ParserType.PAPER.value
@@ -62,12 +132,19 @@ class Pdf(PdfParser):
         # clean mess
         if column_width < self.page_images[0].size[0] / zoomin / 2:
             logging.debug("two_column................... {} {}".format(column_width, self.page_images[0].size[0] / zoomin / 2))
-            self.boxes = self.sort_X_by_page(self.boxes, column_width / 2)
+        # Keep each physical column together before sections are assigned.
+        # A y-first sort can split a conclusion from its following lines when
+        # the opposite column starts higher on the same page.
+        self._final_reading_order_merge(zoomin)
         for b in self.boxes:
-            b["text"] = re.sub(r"([\t 　]|\u3000){2,}", " ", b["text"].strip())
+            b["text"] = re.sub(r"([\t \u3000]|\u3000){2,}", " ", b["text"].strip())
+
+        for b in self.boxes:
+            b["text"] = _IEEE_LICENSE_FOOTER.sub("", b["text"]).strip()
+        self.boxes = [box for box in self.boxes if box["text"]]
 
         def _begin(txt):
-            return re.match("[0-9. 一、i]*(introduction|abstract|摘要|引言|keywords|key words|关键词|background|背景|目录|前言|contents)", txt.lower().strip())
+            return re.match(r"[0-9. \u4e00\u3001i]*(introduction|abstract|\u6458\u8981|\u5f15\u8a00|keywords|key words|\u5173\u952e\u8bcd|background|\u80cc\u666f|\u76ee\u5f55|\u524d\u8a00|contents)", txt.lower().strip())
 
         if from_page > 0:
             return {
@@ -107,7 +184,7 @@ class Pdf(PdfParser):
             b = self.boxes[i]
             i += 1
             txt = b["text"].lower().strip()
-            if re.match("(abstract|摘要)", txt):
+            if re.match(r"(abstract|\u6458\u8981)", txt):
                 if len(txt.split()) > 32 or len(txt) > 64:
                     abstr = txt + self._line_tag(b, zoomin)
                     break
@@ -119,6 +196,13 @@ class Pdf(PdfParser):
         if not abstr:
             i = 0
 
+        sections = [
+            (b["text"] + self._line_tag(b, zoomin), b.get("layoutno", ""))
+            for b in self.boxes
+            if re.match(r"(text|title)", b.get("layoutno", "text"))
+        ]
+        abstr, sections = _extract_abstract(sections)
+
         callback(0.8, "Page {}~{}: Text merging finished".format(from_page, min(to_page, self.total_page)))
         for b in self.boxes:
             logging.debug("{} {}".format(b["text"], b.get("layoutno")))
@@ -128,12 +212,12 @@ class Pdf(PdfParser):
             "title": title,
             "authors": " ".join(authors),
             "abstract": abstr,
-            "sections": [(b["text"] + self._line_tag(b, zoomin), b.get("layoutno", "")) for b in self.boxes[i:] if re.match(r"(text|title)", b.get("layoutno", "text"))],
+            "sections": sections,
             "tables": tbls,
         }
 
 
-def _merge_sections_by_pivot(sorted_sections, sec_ids, chunk_token_num):
+def _merge_sections_by_pivot(sorted_sections, sec_ids, chunk_token_num, separator="\n"):
     """Concatenate consecutive sections sharing a title pivot, bounded by
     ``chunk_token_num`` so a long section is not emitted as one oversized chunk.
     A non-positive budget disables the cap.
@@ -144,13 +228,26 @@ def _merge_sections_by_pivot(sorted_sections, sec_ids, chunk_token_num):
         # Count body tokens only: the @@page\tx0\t...## position tags are metadata
         # for pdf_parser.crop(), not content, so strip them before measuring the
         # budget (the tags stay in chunks[-1] for cropping).
-        merged_body = PdfParser.remove_tag(chunks[-1] + "\n" + txt) if chunks else ""
+        merged_body = PdfParser.remove_tag(chunks[-1] + separator + txt) if chunks else ""
         if sec_id == last_sid and chunks and (chunk_token_num <= 0 or num_tokens_from_string(merged_body) <= chunk_token_num):
-            chunks[-1] += "\n" + txt
+            chunks[-1] += separator + txt
             continue
         chunks.append(txt)
         last_sid = sec_id
     return chunks
+
+
+def _child_delimiters_pattern(parser_config):
+    """Compile the optional parent-child separator used for paper sections."""
+    delimiter = parser_config.get("children_delimiter") or ""
+    if not delimiter:
+        return ""
+    delimiter = delimiter.encode("utf-8").decode("unicode_escape").encode("latin1").decode("utf-8")
+    custom = re.findall(r"`([^`]+)`", delimiter)
+    bare = re.sub(r"`([^`]+)`", "", delimiter)
+    parts = [re.escape(value) for value in custom if value]
+    parts.extend(re.escape(value) for value in bare if value)
+    return "|".join(sorted(set(parts), key=len, reverse=True))
 
 
 def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang="Chinese", callback=None, **kwargs):
@@ -225,7 +322,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
     if paper["abstract"]:
         d = copy.deepcopy(doc)
         txt = pdf_parser.remove_tag(paper["abstract"])
-        d["important_kwd"] = ["abstract", "总结", "概括", "summary", "summarize"]
+        d["important_kwd"] = ["abstract", "\u603b\u7ed3", "\u6982\u62ec", "summary", "summarize"]
         d["important_tks"] = " ".join(d["important_kwd"])
         d["image"], poss = pdf_parser.crop(paper["abstract"], need_position=True)
         add_positions(d, poss)
@@ -241,7 +338,9 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
     sec_ids = []
     sid = 0
     for i, lvl in enumerate(levels):
-        if lvl <= most_level and i > 0 and lvl != levels[i - 1]:
+        section_text = PdfParser.remove_tag(sorted_sections[i][0]).strip()
+        is_title_boundary = lvl <= most_level and lvl != levels[i - 1]
+        if i > 0 and (_SECTION_START.match(section_text) or (is_title_boundary and not _starts_with_measurement(section_text))):
             sid += 1
         sec_ids.append(sid)
         logging.debug("{} {} {} {}".format(lvl, sorted_sections[i][0], most_level, sid))
@@ -249,8 +348,27 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
     # Concatenate sections sharing a title pivot, bounded by chunk_token_num so a
     # long section is not emitted as one oversized chunk (closes #12109).
     chunk_token_num = int(parser_config.get("chunk_token_num", 512) or 0)
-    chunks = _merge_sections_by_pivot(sorted_sections, sec_ids, chunk_token_num)
-    res.extend(tokenize_chunks(chunks, doc, eng, pdf_parser, language=lang))
+    overlapped_percent = max(0.0, float(parser_config.get("overlapped_percent", 0) or 0))
+    child_delimiters_pattern = _child_delimiters_pattern(parser_config)
+    # Layout blocks are the smallest semantic units that Paper can reliably
+    # preserve. Keep an explicit paragraph boundary between them when parent-
+    # child retrieval is active, so the child separator can split a section at
+    # those units instead of duplicating the complete section as one child.
+    section_separator = "\n\n" if child_delimiters_pattern else "\n"
+    if overlapped_percent and chunk_token_num > 0:
+        chunk_token_num = int(chunk_token_num * (1 - overlapped_percent))
+    chunks = _merge_sections_by_pivot(sorted_sections, sec_ids, chunk_token_num, separator=section_separator)
+    chunks = _apply_sentence_overlap(chunks, overlapped_percent)
+    res.extend(
+        tokenize_chunks(
+            chunks,
+            doc,
+            eng,
+            pdf_parser,
+            child_delimiters_pattern=child_delimiters_pattern,
+            language=lang,
+        )
+    )
     table_ctx = max(0, int(parser_config.get("table_context_size", 0) or 0))
     image_ctx = max(0, int(parser_config.get("image_context_size", 0) or 0))
     if table_ctx or image_ctx:
@@ -266,7 +384,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
     while i + 1 < len(paper["lines"]):
         txt = pdf_parser.remove_tag(paper["lines"][i][0])
         j = i
-        if txt.strip("\n").strip()[-1] not in ":：":
+        if txt.strip("\n").strip()[-1] not in r":\uff1a":
             i += 1
             continue
         i += 1
@@ -284,7 +402,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             r = re.search(r"(.*?) ([\\.;?!]|$)", txt)
             txt = r.group(1)[::-1] if r else txt[::-1]
         else:
-            r = re.search(r"(.*?) ([。？；！]|$)", txt)
+            r = re.search(r"(.*?) ([\u3002\uff1f\uff1b\uff01]|$)", txt)
             txt = r.group(1)[::-1] if r else txt[::-1]
         for p in proj:
             d = copy.deepcopy(doc)

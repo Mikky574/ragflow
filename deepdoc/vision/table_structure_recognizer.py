@@ -158,9 +158,16 @@ class TableStructureRecognizer(Recognizer):
         i = 0
         while i < len(boxes):
             if TableStructureRecognizer.is_caption(boxes[i]):
-                if is_english:
-                    cap += " "
-                cap += boxes[i]["text"]
+                text = boxes[i]["text"].strip()
+                # A table region can be adjacent to figure captions. Retain
+                # only its own Table label and discard a following figure
+                # reference instead of contaminating the table caption.
+                if re.match(r"(?i)^\s*table\s*(?:\d+|[ivxlcdm]+)\b", text):
+                    text = re.split(r"(?i)\bfig(?:ure)?\.?\s*\d+\b", text, maxsplit=1)[0].strip()
+                    if text:
+                        if is_english and cap:
+                            cap += " "
+                        cap += text
                 boxes.pop(i)
                 i -= 1
             i += 1

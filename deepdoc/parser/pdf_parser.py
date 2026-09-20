@@ -53,6 +53,41 @@ if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
 
 
+def _figure_caption_text(boxes):
+    """Return only caption text from a figure region.
+
+    A figure region also contains OCR from axes, legends, and labels. That
+    material is useful in the cropped image but makes a poor retrieval text;
+    retain the associated caption as the figure's searchable representation.
+    """
+    captions = []
+    fallback_captions = []
+    for box in boxes:
+        text = (box.get("text") or "").strip()
+        layout_type = (box.get("layout_type") or "").lower()
+        if text and "caption" in layout_type:
+            captions.append(text)
+        elif text and TableStructureRecognizer.is_caption(box):
+            fallback_captions.append(text)
+    if not captions:
+        captions = fallback_captions
+    # A merged OCR box can contain a figure caption plus surrounding body
+    # sentences. Only retain lines that explicitly start with a figure label.
+    # Multiple distinct labels mean the caption association is ambiguous, so
+    # leave the figure out of retrieval rather than indexing misleading text.
+    marker = re.compile(r"^\s*fig(?:ure)?\.?\s*(\d+)\s*\.", flags=re.IGNORECASE)
+    labeled_lines = []
+    labels = set()
+    for caption in captions:
+        for line in caption.splitlines():
+            match = marker.match(line)
+            if not match:
+                continue
+            labels.add(match.group(1))
+            labeled_lines.append(line.strip())
+    return "\n".join(labeled_lines) if len(labels) == 1 else ""
+
+
 class RAGFlowPdfParser:
     def __init__(self, **kwargs):
         """
@@ -899,16 +934,27 @@ class RAGFlowPdfParser:
             by_page[b["page_number"]].append(b)
 
         page_cols = {}
+        page_centers = {}
 
         for pg, bxs in by_page.items():
-            if not bxs:
+            # Figures, tables, captions, and cross-page decorations introduce
+            # extra x-origin clusters. Column detection must only look at body
+            # text; those other blocks are assigned to the nearest body column
+            # later so they cannot turn a two-column paper into four columns.
+            candidates = [
+                b
+                for b in bxs
+                if str(b.get("layout_type", "")).lower() == "text" and not TableStructureRecognizer.is_caption(b)
+            ]
+            if len(candidates) < 2:
                 page_cols[pg] = 1
+                page_centers[pg] = np.array([min((b["x0"] for b in bxs), default=0.0)])
                 continue
 
-            x0s_raw = np.array([b["x0"] for b in bxs], dtype=float)
+            x0s_raw = np.array([b["x0"] for b in candidates], dtype=float)
 
             min_x0 = np.min(x0s_raw)
-            max_x1 = np.max([b["x1"] for b in bxs])
+            max_x1 = np.max([b["x1"] for b in candidates])
             width = max_x1 - min_x0
 
             INDENT_TOL = width * 0.12
@@ -920,11 +966,12 @@ class RAGFlowPdfParser:
                     x0s.append([x])
             x0s = np.array(x0s, dtype=float)
 
-            max_try = min(4, len(bxs))
+            max_try = min(2, len(candidates))
             if max_try < 2:
                 max_try = 1
             best_k = 1
             best_score = -1
+            best_centers = np.array([min_x0])
 
             for k in range(1, max_try + 1):
                 km = KMeans(n_clusters=k, n_init="auto")
@@ -941,8 +988,10 @@ class RAGFlowPdfParser:
                 if score > best_score:
                     best_score = score
                     best_k = k
+                    best_centers = np.sort(km.cluster_centers_.flatten())
 
             page_cols[pg] = best_k
+            page_centers[pg] = best_centers
             logging.info(f"[Page {pg}] best_score={best_score:.2f}, best_k={best_k}")
 
         global_cols = Counter(page_cols.values()).most_common(1)[0][0]
@@ -951,20 +1000,9 @@ class RAGFlowPdfParser:
         for pg, bxs in by_page.items():
             if not bxs:
                 continue
-            k = page_cols[pg]
-            if len(bxs) < k:
-                k = 1
-            x0s = np.array([[b["x0"]] for b in bxs], dtype=float)
-            km = KMeans(n_clusters=k, n_init="auto")
-            labels = km.fit_predict(x0s)
-
-            centers = km.cluster_centers_.flatten()
-            order = np.argsort(centers)
-
-            remap = {orig: new for new, orig in enumerate(order)}
-
-            for b, lb in zip(bxs, labels):
-                b["col_id"] = remap[lb]
+            centers = page_centers[pg]
+            for b in bxs:
+                b["col_id"] = int(np.argmin(np.abs(centers - float(b["x0"]))))
 
             grouped = defaultdict(list)
             for b in bxs:
@@ -1484,7 +1522,7 @@ class RAGFlowPdfParser:
         for k, bxs in figures.items():
             if not bxs:
                 continue
-            txt = "\n".join([b["text"] for b in bxs if b.get("text")])
+            txt = _figure_caption_text(bxs)
 
             poss = []
 
