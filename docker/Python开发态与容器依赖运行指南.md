@@ -36,12 +36,62 @@
 
   PowerShell 等价写法为 `$env:HTTP_PROXY='http://127.0.0.1:7078'`、`$env:HTTPS_PROXY='http://127.0.0.1:7078'`。WSL 必须能够访问该地址；若 WSL 未启用 mirrored networking，请改为 Windows 主机在 WSL 中可达的 IP。
 
-## 3. 安装 Python 与前端依赖
+## 2.1 当前已验证的参考环境
+
+下表记录本仓库当前开发机已实际跑通的版本。它是复现开发态的参考，不是把本机虚拟环境目录或本机配置文件复制到新机器的要求。
+
+| 项目 | 当前值 | 新环境要求 |
+| --- | --- | --- |
+| 宿主机 | Windows + WSL2 | Docker Desktop 使用 WSL2 backend；Python 在 WSL Linux 环境运行 |
+| Python | `3.13.15` | 优先 Python 3.13；受平台或 NumPy wheel 限制时可改用 3.10，但必须重新执行依赖同步 |
+| 虚拟环境 | `/home/mikky/.local/share/ragflow/venv` | 当前机器的固定开发 venv；新环境推荐由 `uv sync` 在仓库 `.venv` 创建 |
+| Python 依赖管理 | `uv` 与仓库 `uv.lock` | 使用 `uv sync --frozen`，不要以全局 pip 替代 lock 文件 |
+| NumPy | `2.2.6` | 由 `uv.lock` 决定，不单独手工升级或降级 |
+| OCR 运行时 | `onnxruntime-gpu 1.23.2` | 必须能列出 `CUDAExecutionProvider` |
+| OCR Provider | TensorRT、CUDA、CPU | GPU 解析使用 CUDA；CPU Provider 保留作兜底 |
+| GPU | NVIDIA GeForce RTX 4090，24 GiB，驱动 `591.86` | 单卡可跑；多卡按第 8 节扩展 OCR 与 embedding 吞吐 |
+| Docker | Engine `26.1.4`，Compose `v2.27.1` | Docker Compose v2，并能将 NVIDIA GPU 暴露给容器 |
+| 前端 | Node `24.13.1`，npm `11.8.0` | Node 22 或更高；依赖以 `web/package-lock.json` 为准 |
+
+当前运行时有意使用 `DEVICE=cpu` 与 `OCR_DEVICE=gpu`：通用 PyTorch 路径保持 CPU，DeepDOC 的 ONNX det、rec、layout 和表格模型走 GPU。这样不会为了 OCR 再安装一套通用 torch。请勿把当前机器 venv、`.cache` 或 `conf/service_conf.yaml` 整体复制到新环境；它们分别是机器状态、模型缓存和本机密钥配置。
+
+## 3. 新环境的 AI 可执行启动清单
+
+以下顺序适用于新的 WSL2 + NVIDIA GPU 主机。命令均在仓库根目录执行，除非命令中写明 `web/`。执行前，AI 应先确认 `nvidia-smi`、`docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`、`python3.13 --version` 都成功；任一项失败时先修复主机环境，不应继续安装应用依赖。
+
+1. 克隆仓库并进入目标提交；若需要代理，先设置 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY`（见第 2 节）。
+2. 安装与锁定文件一致的 Python 依赖和 DeepDOC 模型：
+
+   ```bash
+   uv sync --frozen --python 3.13 --all-extras
+   uv run python ragflow_deps/download_deps.py
+   ```
+
+3. 为 GPU OCR 安装 ONNX Runtime CUDA 依赖，并在每次启动 Python API/worker 前设置第 8 节的 `LD_LIBRARY_PATH`。用下列检查作为硬性验收：
+
+   ```bash
+   uv run python -c "import onnxruntime as ort; assert 'CUDAExecutionProvider' in ort.get_available_providers(); print(ort.get_available_providers())"
+   ```
+
+4. 安装前端依赖：
+
+   ```bash
+   cd web && npm ci && cd ..
+   ```
+
+5. 下载 BGE-M3 到 `.cache/models/bge-m3`，按第 5 节启动 MySQL、Redis、MinIO、Elasticsearch 和 BGE-M3。启动后逐项检查 `docker compose ... ps`、BGE-M3 `/health` 和数据库/ES 的宿主机映射端口。
+6. 按第 7 节创建本机 `conf/service_conf.yaml`，只写本机 Docker 暴露的 `localhost` 地址和实际端口；模型地址为 BGE-M3 路由地址。密钥只留在本机文件中。
+7. 在终端 A 用第 9 节启动 Python API 和 worker，在终端 B 用第 9 节启动 Vite。若 OCR 使用多卡且解析大 PDF，使用 `WS=1` 与 `OCR_PARALLEL_DEVICES=<卡数>`。
+8. 最后执行第 10 节健康检查，上传一份 PDF，并同时观察 API/worker 日志和 `nvidia-smi`。OCR 日志出现 `uses GPU (device N)` 且 BGE-M3 health 正常，才算部署完成。
+
+AI 处理故障时应保留失败命令、完整错误和上述三个验收结果；不要通过修改 `uv.lock`、提交 `service_conf.yaml` 或把容器内部 DNS 名称写进本机 Python 配置来绕过问题。
+
+## 4. 安装 Python 与前端依赖
 
 在仓库根目录执行：
 
 ```bash
-uv sync --python 3.13 --all-extras
+uv sync --frozen --python 3.13 --all-extras
 uv run python ragflow_deps/download_deps.py
 cd web
 npm ci
@@ -55,7 +105,7 @@ cd ..
 
 脚本也下载 NLTK 数据、tokenizer 和构建依赖。网络受限时可设置 `HF_ENDPOINT=https://hf-mirror.com`，也可保留上面的 HTTP/HTTPS 代理。
 
-## 4. 下载 BGE-M3 并启动容器依赖
+## 5. 下载 BGE-M3 并启动容器依赖
 
 BGE-M3 来源为 Hugging Face 的 `BAAI/bge-m3`。先下载到本地挂载目录：
 
@@ -92,9 +142,60 @@ curl http://127.0.0.1:6380/health
 nvidia-smi
 ```
 
-应看到两张 GPU 均有一个 TEI 进程。三张或更多 GPU 时，复制 `bge-m3-gpu1` 服务为 `bge-m3-gpu2`、`bge-m3-gpu3`，把 `device_ids` 改为对应卡号，并在 `docker/nginx/bge-m3-router.conf` 的 `upstream bge_m3_pool` 中添加对应服务。RAGFlow 的 embedding 地址始终保持 `http://127.0.0.1:6380`。
+应看到两张 GPU 均有一个 TEI 进程。三张或更多 GPU 时，复制 `bge-m3-gpu1` 服务为 `bge-m3-gpu2`、`bge-m3-gpu3`，把 `device_ids` 改为对应卡号，并在 `docker/nginx/bge-m3-router.conf` 的 `upstream bge_m3_pool` 中添加对应服务。默认 embedding 地址为 `http://127.0.0.1:6380`；改端口或跨主机部署时，按下一节更新该地址。
 
-## 5. 将本机 Python 连接到容器
+## 6. 端口冲突与分离部署
+
+所有宿主机端口都可以改，容器内端口保持不变。以下是一个前端、API、BGE-M3 都避开默认端口的示例：
+
+| 服务 | 默认宿主机端口 | 自定义示例 | 配置位置 |
+| --- | --- | --- | --- |
+| 前端 Vite | 9222 | 9223 | 启动时的 `PORT` |
+| Python API | 9380 | 19380 | `conf/service_conf.yaml` 的 `ragflow.http_port` |
+| BGE-M3 路由 | 6380 | 16380 | `BGE_M3_PORT` |
+| Elasticsearch | 1200 | 11200 | `docker/.env` 的 `ES_PORT` |
+| MySQL | 由 `EXPOSE_MYSQL_PORT` 决定 | 13306 | `docker/.env` 的 `EXPOSE_MYSQL_PORT` |
+| MinIO / Redis | 9000 / 6379 | 19000 / 16379 | `docker/.env` 的 `MINIO_PORT` / `REDIS_PORT` |
+
+例如把 BGE-M3 放到本机 `16380`：
+
+```bash
+export BGE_M3_PORT=16380
+docker compose -f docker/docker-compose-base.yml -f docker/docker-compose-python-dev.yml up -d bge-m3-gpu0 bge-m3-gpu1 bge-m3-router
+curl http://127.0.0.1:16380/health
+```
+
+然后把 `conf/service_conf.yaml` 中 embedding 的 `base_url` 改为 `http://127.0.0.1:16380`。若是在页面中添加模型，也填写这个地址；不要填写 TEI 容器名或容器内部端口。
+
+Python API 改到 `19380` 时，更新 `conf/service_conf.yaml`：
+
+```yaml
+ragflow:
+  host: 0.0.0.0
+  http_port: 19380
+```
+
+前端必须同时知道新的 API 端口：
+
+```bash
+cd web
+PORT=9223 PYTHON_API_PORT=19380 npm run dev
+```
+
+Vite 会监听 `9223`，并将 `/api`、`/v1` 转发至 `127.0.0.1:19380`。因此浏览器只访问 `http://127.0.0.1:9223`，不需要在前端代码中写死 API 地址。
+
+### BGE-M3 部署在另一台机器
+
+若 BGE-M3 与 RAGFlow 不在同一台机器，模型服务器的 Compose 启动前设置公开绑定地址，并用防火墙限制只允许 RAGFlow 主机访问：
+
+```bash
+export BGE_M3_BIND_ADDRESS=0.0.0.0
+export BGE_M3_PORT=16380
+docker compose -f docker/docker-compose-base.yml -f docker/docker-compose-python-dev.yml up -d bge-m3-gpu0 bge-m3-gpu1 bge-m3-router
+```
+
+RAGFlow 主机的 `conf/service_conf.yaml` 或模型配置页面填写 `http://<BGE-M3服务器IP>:16380`。模型服务地址变更后，需要重启 Python API 和 worker；只改前端端口只需重启 Vite。
+## 7. 将本机 Python 连接到容器
 
 本机 Python 不能使用 Docker 内部 DNS 名称（如 `mysql`、`es01`）。编辑 `conf/service_conf.yaml`，将其指向 Docker 暴露到本机的端口。端口必须以实际 Compose 输出为准：
 
@@ -126,7 +227,7 @@ user_default_llm:
 
 不要提交包含密码、密钥或本机端口差异的 `conf/service_conf.yaml`。将该文件保留为本机配置即可。
 
-## 6. 启用 DeepDOC GPU OCR
+## 8. 启用 DeepDOC GPU OCR
 
 DeepDOC 的 Python 路径使用 ONNX Runtime。保持 `DEVICE=cpu`，只设置 `OCR_DEVICE=gpu`，这样不会因通用 PyTorch 路径而额外安装大型 torch 包：
 
@@ -185,12 +286,13 @@ CUDA_VISIBLE_DEVICES=1 OCR_DEVICE=gpu OCR_PARALLEL_DEVICES=1 python rag/svr/task
 
 `nvidia-smi` 应显示每张参与 OCR 的卡均有 Python worker，日志中会出现 `uses GPU (device 0)` 和 `uses GPU (device 1)`。方向识别辅助模型仍可在 CPU 运行。
 
-## 7. 启动开发服务
+## 9. 启动开发服务
 
 在一个终端启动 Python API 与 worker：
 
 ```bash
 source .venv/bin/activate
+# 当前参考机使用外部 venv；新环境默认是 .venv。
 export PYTHONPATH="$PWD"
 export API_PROXY_SCHEME=python
 export DOC_ENGINE=elasticsearch
@@ -205,9 +307,9 @@ cd web
 npm run dev -- --port 9222
 ```
 
-前端通过 Vite 将 `/api` 和 `/v1` 代理到 `127.0.0.1:9380`。修改 `web/src/` 会热更新，不需要重建镜像。
+前端通过 Vite 将 `/api` 和 `/v1` 代理到 `PYTHON_API_PORT`（默认 `127.0.0.1:9380`）。修改 `web/src/` 会热更新，不需要重建镜像。
 
-## 8. 健康检查与常见问题
+## 10. 健康检查与常见问题
 
 ```bash
 curl -I http://127.0.0.1:9222
