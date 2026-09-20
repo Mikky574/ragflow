@@ -17,7 +17,7 @@
 
 ## 2. 前置条件
 
-- Linux x86_64、Docker Engine 与 Docker Compose v2。当前验证在 WSL2 Linux 发行版完成；正式部署直接使用 Linux 主机，不依赖 Windows 或 Docker Desktop。
+- Linux x86_64、glibc >= 2.27、Docker Engine 与 Docker Compose v2。当前验证在 WSL2 Linux 发行版完成；正式部署直接使用 Linux 主机，不依赖 Windows 或 Docker Desktop。glibc 2.27 可使用当前 Python GPU OCR wheel；Go native build 仍要求其专用 glibc 2.28 构建环境。
 - Node.js 22、npm、Python 3.13、[uv](https://docs.astral.sh/uv/)。本仓库的 `requires-python` 与 `uv.lock` 均固定 Python 3.13；Python 3.10 不能直接运行当前开发态，必须另行维护依赖解析与锁定文件。
 - 使用 GPU 时安装 NVIDIA 驱动；以下命令必须能看到 GPU：
 
