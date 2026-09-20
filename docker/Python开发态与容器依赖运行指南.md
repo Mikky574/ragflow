@@ -17,8 +17,8 @@
 
 ## 2. 前置条件
 
-- Docker Desktop（Windows 下启用 WSL2 backend）与 Docker Compose v2。
-- Node.js 22、npm、Python 3.13、[uv](https://docs.astral.sh/uv/)。Python 3.13 使用本仓库的 NumPy 2.x 约束；若本机依赖无法安装，可使用 Python 3.10 创建隔离环境。
+- Linux x86_64、Docker Engine 与 Docker Compose v2。当前验证在 WSL2 Linux 发行版完成；正式部署直接使用 Linux 主机，不依赖 Windows 或 Docker Desktop。
+- Node.js 22、npm、Python 3.13、[uv](https://docs.astral.sh/uv/)。本仓库的 `requires-python` 与 `uv.lock` 均固定 Python 3.13；Python 3.10 不能直接运行当前开发态，必须另行维护依赖解析与锁定文件。
 - 使用 GPU 时安装 NVIDIA 驱动；以下命令必须能看到 GPU：
 
   ```bash
@@ -34,7 +34,7 @@
   export NO_PROXY=localhost,127.0.0.1,::1
   ```
 
-  PowerShell 等价写法为 `$env:HTTP_PROXY='http://127.0.0.1:7078'`、`$env:HTTPS_PROXY='http://127.0.0.1:7078'`。WSL 必须能够访问该地址；若 WSL 未启用 mirrored networking，请改为 Windows 主机在 WSL 中可达的 IP。
+  Linux shell 直接使用上述 `export`。代理运行在同一台 Linux 主机时使用 `127.0.0.1:7078`；代理位于另一台机器时，将地址替换为该机器的可达 IP 或域名。
 
 ## 2.1 当前已验证的参考环境
 
@@ -42,10 +42,11 @@
 
 | 项目 | 当前值 | 新环境要求 |
 | --- | --- | --- |
-| 宿主机 | Windows + WSL2 | Docker Desktop 使用 WSL2 backend；Python 在 WSL Linux 环境运行 |
+| 宿主机 | Linux x86_64（当前验证于 WSL2 Linux） | 正式部署使用 Linux 主机、Docker Engine 与 NVIDIA Container Toolkit |
 | Python | `3.13.15` | 优先 Python 3.13；受平台或 NumPy wheel 限制时可改用 3.10，但必须重新执行依赖同步 |
 | 虚拟环境 | `/home/mikky/.local/share/ragflow/venv` | 当前机器的固定开发 venv；新环境推荐由 `uv sync` 在仓库 `.venv` 创建 |
 | Python 依赖管理 | `uv` 与仓库 `uv.lock` | 使用 `uv sync --frozen`，不要以全局 pip 替代 lock 文件 |
+| GraphRAG | InfiniFlow `graspologic` Git 提交 `38e680c` | 不安装 PyPI 的 `graspologic==3.4.4`；保持 lock 文件中固定的 Git 依赖 |
 | NumPy | `2.2.6` | 由 `uv.lock` 决定，不单独手工升级或降级 |
 | OCR 运行时 | `onnxruntime-gpu 1.23.2` | 必须能列出 `CUDAExecutionProvider` |
 | OCR Provider | TensorRT、CUDA、CPU | GPU 解析使用 CUDA；CPU Provider 保留作兜底 |
@@ -57,7 +58,7 @@
 
 ## 3. 新环境的 AI 可执行启动清单
 
-以下顺序适用于新的 WSL2 + NVIDIA GPU 主机。命令均在仓库根目录执行，除非命令中写明 `web/`。执行前，AI 应先确认 `nvidia-smi`、`docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`、`python3.13 --version` 都成功；任一项失败时先修复主机环境，不应继续安装应用依赖。
+以下顺序适用于新的 Linux x86_64 + NVIDIA GPU 主机。命令均在仓库根目录执行，除非命令中写明 `web/`。执行前，AI 应先确认 `nvidia-smi`、`docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`、`python3.13 --version` 都成功；任一项失败时先修复主机环境，不应继续安装应用依赖。
 
 1. 克隆仓库并进入目标提交；若需要代理，先设置 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY`（见第 2 节）。
 2. 安装与锁定文件一致的 Python 依赖和 DeepDOC 模型：
@@ -104,6 +105,18 @@ cd ..
 - `InfiniFlow/text_concat_xgb_v1.0`：文本拼接模型。
 
 脚本也下载 NLTK 数据、tokenizer 和构建依赖。网络受限时可设置 `HF_ENDPOINT=https://hf-mirror.com`，也可保留上面的 HTTP/HTTPS 代理。
+
+### GraphRAG 的 graspologic 与 Python 3.13
+
+PyPI 的 `graspologic==3.4.4` 及其上游 NumPy 1.x 约束不适用于 Python 3.13。本仓库不使用该发行版，而是在 `pyproject.toml` 固定 InfiniFlow 维护的 Git 提交 `38e680cab72bc9fb68a7992c3bcc2d53b24e42fd`；`uv.lock` 记录了对应源码，且 `[tool.uv].override-dependencies` 强制 `numpy>=2.1,<2.3`。因此必须执行 `uv sync --frozen --python 3.13 --all-extras`，不要额外执行 `pip install graspologic==3.4.4`，也不要自行把 NumPy 降回 1.x。
+
+安装完成后可验证 GraphRAG 所需 API：
+
+```bash
+uv run python -c "import graspologic; from graspologic.partition import hierarchical_leiden; from graspologic.utils import largest_connected_component; print(graspologic.__version__)"
+```
+
+当前已验证输出版本为 `0.1.dev847+g38e680cab`，并可导入 `hierarchical_leiden` 与 `largest_connected_component`。
 
 ## 5. 下载 BGE-M3 并启动容器依赖
 
