@@ -9,6 +9,7 @@ export interface IChangeParserConfigRequestBody {
   html4excel?: boolean;
   image_table_context_window?: number;
   image_context_size?: number;
+  image_vision_enable?: boolean;
   table_context_size?: number;
   raptor?: {
     use_raptor?: boolean;

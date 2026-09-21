@@ -69,7 +69,9 @@ def _make_pdf_parser_stub():
         def remove_tag(text):
             return text
 
+    pdf_parser.PlainParser = _StubPdfParser
     pdf_parser.RAGFlowPdfParser = _StubPdfParser
+    pdf_parser.VisionParser = _StubPdfParser
     return pdf_parser
 
 

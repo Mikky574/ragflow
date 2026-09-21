@@ -50,6 +50,7 @@ export interface IParserConfig {
   image_context_window?: number;
   image_table_context_window?: number;
   image_context_size?: number;
+  image_vision_enable?: boolean;
   table_context_size?: number;
   mineru_parse_method?: 'auto' | 'txt' | 'ocr';
   mineru_formula_enable?: boolean;
