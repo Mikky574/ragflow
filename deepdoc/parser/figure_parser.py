@@ -124,30 +124,21 @@ def vision_figure_parser_pdf_wrapper(tbls, callback=None, lang="English", **kwar
     lang = _normalize_vision_language(lang)
     if not tbls:
         return []
-    callback = callback or (lambda *_args, **_kwargs: None)
     sections = kwargs.get("sections")
     parser_config = kwargs.get("parser_config", {})
     context_size = max(0, int(parser_config.get("image_context_size", 0) or 0))
-    vision_enabled = parser_config.get("image_vision_enable", True)
-
-    def is_figure_item(item):
-        return is_image_like(item[0][0]) and isinstance(item[0][1], list)
-
-    figures_data = [item for item in tbls if is_figure_item(item)]
-    if not figures_data:
-        return tbls
-    if not vision_enabled:
-        callback(0.7, "Figure vision enhancement is disabled by the parser configuration.")
-        return tbls
     try:
         vision_model_config = get_tenant_default_model_by_type(kwargs["tenant_id"], LLMType.VISION)
         vision_model = LLMBundle(kwargs["tenant_id"], vision_model_config, lang=lang)
         callback(0.7, "Visual model detected. Attempting to enhance figure extraction...")
-    except Exception as exc:
-        logging.warning("Figure vision enhancement skipped because no usable default Vision model is configured: %s", exc)
-        callback(0.7, "Figure vision enhancement skipped: configure a default Vision model to extract image content.")
+    except Exception:
         vision_model = None
     if vision_model:
+
+        def is_figure_item(item):
+            return is_image_like(item[0][0]) and isinstance(item[0][1], list)
+
+        figures_data = [item for item in tbls if is_figure_item(item)]
         figure_contexts = []
         if sections and figures_data and context_size > 0:
             figure_contexts = append_context2table_image4pdf(
@@ -171,7 +162,6 @@ def vision_figure_parser_pdf_wrapper(tbls, callback=None, lang="English", **kwar
         except TaskCanceledException:
             raise
         except Exception as e:
-            logging.warning("Figure vision enhancement failed: %s", e)
             callback(0.8, f"Visual model error: {e}. Skipping figure parsing enhancement.")
     return tbls
 

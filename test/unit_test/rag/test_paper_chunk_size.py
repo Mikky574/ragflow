@@ -127,7 +127,6 @@ def test_chunk_bounds_oversized_pivot(monkeypatch):
 
     monkeypatch.setattr(paper, "normalize_layout_recognizer", lambda x: ("DeepDOC", None))
     monkeypatch.setattr(paper, "Pdf", FakePdf)
-    monkeypatch.setattr(paper, "vision_figure_parser_pdf_wrapper", lambda tbls, **k: tbls)
     monkeypatch.setattr(paper, "bullets_category", lambda *_: 1)
     # One pivot: every section shares a level that never advances the pivot id.
     monkeypatch.setattr(paper, "title_frequency", lambda bull, secs: (1, [2] * len(secs)))
@@ -159,7 +158,6 @@ def test_parent_child_preserves_layout_block_boundaries(monkeypatch):
 
     monkeypatch.setattr(paper, "normalize_layout_recognizer", lambda x: ("DeepDOC", None))
     monkeypatch.setattr(paper, "Pdf", FakePdf)
-    monkeypatch.setattr(paper, "vision_figure_parser_pdf_wrapper", lambda tbls, **k: tbls)
     monkeypatch.setattr(paper, "bullets_category", lambda *_: 1)
     monkeypatch.setattr(paper, "title_frequency", lambda bull, secs: (1, [2] * len(secs)))
     monkeypatch.setattr(paper, "tokenize_table", lambda *a, **k: [])

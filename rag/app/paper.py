@@ -18,7 +18,6 @@ import logging
 import copy
 import re
 
-from deepdoc.parser.figure_parser import vision_figure_parser_pdf_wrapper
 from common.constants import ParserType, MAXIMUM_PAGE_NUMBER
 from common.token_utils import num_tokens_from_string
 from rag.nlp import rag_tokenizer, tokenize, tokenize_table, add_positions, bullets_category, title_frequency, tokenize_chunks, attach_media_context, DEFAULT_DELIMITER
@@ -297,16 +296,6 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
 
             paper = {"title": filename, "authors": " ", "abstract": "", "sections": sections, "tables": tables}
 
-        tbls = paper["tables"]
-        if name != "mineru":
-            tbls = vision_figure_parser_pdf_wrapper(
-                tbls=tbls,
-                sections=sections,
-                callback=callback,
-                lang=lang,
-                **kwargs,
-            )
-        paper["tables"] = tbls
     else:
         raise NotImplementedError("file type not supported yet(pdf supported)")
 

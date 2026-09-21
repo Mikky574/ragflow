@@ -389,7 +389,6 @@ def get_parser_config(chunk_method, parser_config):
             "table_context_size": 1,
             "image_context_size": 0,
             "image_table_context_window": 1,
-            "image_vision_enable": True,
             "parent_child": {"use_parent_child": False, "children_delimiter": ""},
         },
         "book": {},

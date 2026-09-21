@@ -53,39 +53,49 @@ if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
 
 
-def _figure_caption_text(boxes):
-    """Return only caption text from a figure region.
+def _figure_ocr_text(boxes):
+    """Build searchable figure text from its caption and DeepDOC OCR boxes.
 
-    A figure region also contains OCR from axes, legends, and labels. That
-    material is useful in the cropped image but makes a poor retrieval text;
-    retain the associated caption as the figure's searchable representation.
+    The caption identifies the figure. OCR lines within the same figure region
+    retain labels, legends, units, and annotations without requiring a Vision
+    model. Exact duplicates are removed while their reading order is kept.
     """
     captions = []
     fallback_captions = []
+    ocr_lines = []
     for box in boxes:
         text = (box.get("text") or "").strip()
+        if not text:
+            continue
         layout_type = (box.get("layout_type") or "").lower()
-        if text and "caption" in layout_type:
+        if "caption" in layout_type:
             captions.append(text)
-        elif text and TableStructureRecognizer.is_caption(box):
+            continue
+        if TableStructureRecognizer.is_caption(box):
             fallback_captions.append(text)
-    if not captions:
-        captions = fallback_captions
-    # A merged OCR box can contain a figure caption plus surrounding body
-    # sentences. Only retain lines that explicitly start with a figure label.
-    # Multiple distinct labels mean the caption association is ambiguous, so
-    # leave the figure out of retrieval rather than indexing misleading text.
+            continue
+        ocr_lines.extend(line.strip() for line in text.splitlines() if line.strip())
+
+    captions = captions or fallback_captions
     marker = re.compile(r"^\s*fig(?:ure)?\.?\s*(\d+)\s*\.", flags=re.IGNORECASE)
     labeled_lines = []
     labels = set()
     for caption in captions:
         for line in caption.splitlines():
             match = marker.match(line)
-            if not match:
-                continue
-            labels.add(match.group(1))
-            labeled_lines.append(line.strip())
-    return "\n".join(labeled_lines) if len(labels) == 1 else ""
+            if match:
+                labels.add(match.group(1))
+                labeled_lines.append(line.strip())
+    caption_lines = labeled_lines if len(labels) == 1 else []
+
+    seen = set()
+    result = []
+    for line in [*caption_lines, *ocr_lines]:
+        normalized = re.sub(r"\s+", " ", line).strip().casefold()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append(line)
+    return "\n".join(result)
 
 
 class RAGFlowPdfParser:
@@ -1522,7 +1532,7 @@ class RAGFlowPdfParser:
         for k, bxs in figures.items():
             if not bxs:
                 continue
-            txt = _figure_caption_text(bxs)
+            txt = _figure_ocr_text(bxs)
 
             poss = []
 
