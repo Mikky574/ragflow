@@ -1,18 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import tarfile
 import urllib.request
-import zipfile
 from pathlib import Path
 
 SOURCES = {
-    "equation-handwritten": (
-        "https://huggingface.co/datasets/Azu/Handwritten-Mathematical-Expression-Convert-LaTeX/resolve/main/data.zip",
-        "data.zip",
-        "zip",
-    ),
     "diagrambank": (
         "https://huggingface.co/datasets/ghzlmc/DiagramBank/resolve/main/data/ICLR_2017_accept_oral.tar.gz",
         "ICLR_2017_accept_oral.tar.gz",
@@ -38,16 +31,6 @@ def main() -> None:
     parser.add_argument("--output", default="data/source")
     args = parser.parse_args()
     root = Path(args.output)
-
-    equation_url, equation_name, _ = SOURCES["equation-handwritten"]
-    equation_root = root / "equation-handwritten"
-    equation_archive = equation_root / equation_name
-    download(equation_url, equation_archive)
-    equation_raw = equation_root / "raw"
-    if not equation_raw.exists():
-        with zipfile.ZipFile(equation_archive) as archive:
-            archive.extractall(equation_raw)
-        print(f"extracted {equation_raw}")
 
     diagram_url, diagram_name, _ = SOURCES["diagrambank"]
     diagram_root = root / "diagrambank"

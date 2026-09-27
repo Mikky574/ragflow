@@ -28,17 +28,14 @@ def copy_seed(source: Path, destination: Path, label: str, limit: int, source_da
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create an initial labelled visual-classification seed manifest.")
-    parser.add_argument("--equation-source", default="data/source/equation-handwritten/raw")
     parser.add_argument("--diagram-source", default="data/source/diagrambank/raw")
     parser.add_argument("--images", default="data/images")
     parser.add_argument("--manifest", default="data/manifests/public-seed.jsonl")
-    parser.add_argument("--equations", type=int, default=300)
     parser.add_argument("--diagrams", type=int, default=200)
     args = parser.parse_args()
 
     records: list[dict] = []
     image_root = Path(args.images)
-    copy_seed(Path(args.equation_source), image_root / "equation", "equation", args.equations, "Azu/Handwritten-Mathematical-Expression-Convert-LaTeX", records)
     copy_seed(Path(args.diagram_source), image_root / "scientific_schematic", "scientific_schematic", args.diagrams, "ghzlmc/DiagramBank: ICLR 2017 accept oral", records)
 
     output = Path(args.manifest)

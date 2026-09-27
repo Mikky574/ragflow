@@ -43,18 +43,15 @@ GPU 环境需要安装与 CUDA 驱动匹配的 PyTorch。上面的命令必须�
 
 ## 下载首批公开种子数据
 
-设置代理后下载公开的公式图和论文结构图，并建立带初始标签的 SQLite 数据集：
+设置代理后下载真实论文 PDF；`equation`、图表和结构图均应由 PDF 解析后产生：
 
 ```bash
 export HTTP_PROXY=http://127.0.0.1:7078
 export HTTPS_PROXY=http://127.0.0.1:7078
-uv run python scripts/download_public_seeds.py
-uv run python scripts/build_public_seed.py
-uv run python -m visual_classifier import-manifest \
-  --input data/manifests/public-seed.jsonl
+uv run python scripts/download_reference_papers.py
 ```
 
-这会准备 300 张 `equation` 和 88 张 `scientific_schematic` 种子图。来源、适用范围和后续补数方式见 [data/README.md](data/README.md)。
+已下载的 PDF 位于 `data/papers/`。等独立的 DeepDOC 候选区域导出器完成后，再把裁图和 OCR 元数据导入 SQLite。可以额外运行 `scripts/download_public_seeds.py` 和 `scripts/build_public_seed.py` 下载 88 张公开论文结构图作为 `scientific_schematic` 辅助样本；它们不替代真实 PDF 裁图。
 ## 数据集流程
 
 1. 将待分类的候选区域放入 `data/images/`，按来源文件分目录，例如 `data/images/paper-a/page-03-figure-01.png`。
