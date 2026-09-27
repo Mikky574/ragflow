@@ -5,8 +5,8 @@ source_documents/*.part
 candidates/**
 !candidates/.gitkeep
 target_data/使用/*/*
-target_data/不使用/*/*
+target_data/不使用/*
 !target_data/使用/*/.gitkeep
-!target_data/不使用/*/.gitkeep
+!target_data/不使用/.gitkeep
 __pycache__/
 .pytest_cache/
