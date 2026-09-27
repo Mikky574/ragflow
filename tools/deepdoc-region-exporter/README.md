@@ -4,8 +4,7 @@
 
 ## 目录
 
-- `source_papers/`：输入 PDF；可运行 `download_papers.py` 下载 15 篇公开论文。
-- `source_presentations/`：输入 PPTX；可运行 `download_presentations.py` 下载 6 份公开演示文件。
+- `source_documents/`：统一的原始文件目录，PDF 和 PPTX 都直接放在此处；`PAPERS.json` 与 `PRESENTATIONS.json` 保存各自来源。
 - `candidates/`：自动裁图及 `manifest.jsonl`，每条记录有来源文件、页码、坐标、DeepDOC 版面类型和邻近 OCR 文本。
 - `target_data/`：人工标注目标目录。将确认后的候选图片移动到对应类别目录。
 
@@ -20,7 +19,7 @@ export HTTPS_PROXY=http://127.0.0.1:7078
 uv run python download_papers.py
 ```
 
-脚本下载 15 篇 arXiv 论文，包含模型图、流程图、实验图、表格和公式密度较高的 PINNs/Neural ODE 论文。下载后会生成 `source_papers/SOURCES.json`，记录来源和 SHA-256。
+脚本下载 15 篇 arXiv 论文，包含模型图、流程图、实验图、表格和公式密度较高的 PINNs/Neural ODE 论文。PDF 直接保存到 `source_documents/`，并生成 `PAPERS.json` 记录来源和 SHA-256。
 
 ## 下载演示文件
 
@@ -31,7 +30,7 @@ export HTTPS_PROXY=http://127.0.0.1:7078
 uv run python download_presentations.py
 ```
 
-文件保存到 `source_presentations/`，来源和校验值记录在 `SOURCES.json`。当前采集器只提取 PDF；PPTX 保留为下一阶段的演示文稿裁图原始数据，不会被 `extract_regions.py` 误处理。
+PPTX 也直接保存到 `source_documents/`，来源和校验值记录在 `PRESENTATIONS.json`。当前采集器只提取 PDF，会自动跳过同目录下的 PPTX。
 
 ## 提取候选图片区
 
@@ -47,7 +46,7 @@ export NLTK_DATA="$HOME/nltk_data"
 NLTK_ALLOW_PROXIED_URLOPEN=1 python -m nltk.downloader -d "$NLTK_DATA" punkt_tab wordnet omw-1.4
 
 uv run python tools/deepdoc-region-exporter/extract_regions.py \
-  --input tools/deepdoc-region-exporter/source_papers \
+  --input tools/deepdoc-region-exporter/source_documents \
   --output tools/deepdoc-region-exporter/candidates \
   --types figure table equation
 ```

@@ -1,11 +1,10 @@
 # Runtime outputs and original papers are local data, never Git assets.
-source_papers/*.pdf
-source_papers/*.part
+source_documents/*.pdf
+source_documents/*.pptx
+source_documents/*.part
 candidates/**
 !candidates/.gitkeep
 target_data/*/*
 !target_data/*/.gitkeep
 __pycache__/
 .pytest_cache/
-source_presentations/*.pptx
-source_presentations/*.part

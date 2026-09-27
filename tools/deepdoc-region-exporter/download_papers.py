@@ -56,12 +56,12 @@ def download(paper_id: str, filename: str, output: Path) -> dict[str, str | int]
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download real papers for DeepDOC visual-region dataset collection.")
-    parser.add_argument("--output", default="source_papers")
+    parser.add_argument("--output", default="source_documents")
     args = parser.parse_args()
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     records = [download(paper_id, f"{name}.pdf", output) for paper_id, name in PAPERS]
-    (output / "SOURCES.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output / "PAPERS.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"ready: {len(records)} PDFs in {output}")
 
 

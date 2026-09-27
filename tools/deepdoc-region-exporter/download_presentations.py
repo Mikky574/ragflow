@@ -27,7 +27,7 @@ def sha256(path: Path) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download CC0 PPTX fixtures for visual-region labelling.")
-    parser.add_argument("--output", default="source_presentations")
+    parser.add_argument("--output", default="source_documents")
     args = parser.parse_args()
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
@@ -45,7 +45,7 @@ def main() -> None:
             temporary.replace(target)
         records.append({"filename": filename, "url": url, "license": license_name, "size_bytes": target.stat().st_size, "sha256": sha256(target)})
         print(f"ready: {filename}")
-    (output / "SOURCES.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output / "PRESENTATIONS.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":

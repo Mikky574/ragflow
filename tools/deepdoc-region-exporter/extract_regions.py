@@ -137,7 +137,7 @@ def export_pdf(pdf_path: Path, output_root: Path, zoomin: int, requested_types: 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract DeepDOC figure, table and equation regions from a PDF directory.")
-    parser.add_argument("--input", default="source_papers", help="PDF directory, searched recursively")
+    parser.add_argument("--input", default="source_documents", help="document directory, searched recursively for PDFs")
     parser.add_argument("--output", default="candidates")
     parser.add_argument("--zoomin", type=int, default=3)
     parser.add_argument("--min-edge", type=int, default=24)
