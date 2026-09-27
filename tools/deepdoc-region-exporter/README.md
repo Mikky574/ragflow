@@ -5,6 +5,7 @@
 ## 目录
 
 - `source_papers/`：输入 PDF；可运行 `download_papers.py` 下载 15 篇公开论文。
+- `source_presentations/`：输入 PPTX；可运行 `download_presentations.py` 下载 6 份公开演示文件。
 - `candidates/`：自动裁图及 `manifest.jsonl`，每条记录有来源文件、页码、坐标、DeepDOC 版面类型和邻近 OCR 文本。
 - `target_data/`：人工标注目标目录。将确认后的候选图片移动到对应类别目录。
 
@@ -20,6 +21,17 @@ uv run python download_papers.py
 ```
 
 脚本下载 15 篇 arXiv 论文，包含模型图、流程图、实验图、表格和公式密度较高的 PINNs/Neural ODE 论文。下载后会生成 `source_papers/SOURCES.json`，记录来源和 SHA-256。
+
+## 下载演示文件
+
+```bash
+cd tools/deepdoc-region-exporter
+export HTTP_PROXY=http://127.0.0.1:7078
+export HTTPS_PROXY=http://127.0.0.1:7078
+uv run python download_presentations.py
+```
+
+文件保存到 `source_presentations/`，来源和校验值记录在 `SOURCES.json`。当前采集器只提取 PDF；PPTX 保留为下一阶段的演示文稿裁图原始数据，不会被 `extract_regions.py` 误处理。
 
 ## 提取候选图片区
 
