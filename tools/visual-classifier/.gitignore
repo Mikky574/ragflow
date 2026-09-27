@@ -9,3 +9,4 @@ data/reviews/*.csv
 data/predictions/*.jsonl
 data/*.sqlite3
 models/
+data/source/
