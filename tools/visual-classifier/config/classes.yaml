@@ -1,0 +1,53 @@
+# The class names are stable identifiers. Prompts can evolve without breaking
+# annotated manifests or future DeepDOC integration.
+classes:
+  scientific_plot:
+    action: index
+    prompts:
+      - "a scientific experimental plot or chart with axes and curves"
+      - "带坐标轴、曲线或数据点的科研实验图"
+  scientific_schematic:
+    action: index
+    prompts:
+      - "a scientific schematic, circuit diagram, system architecture diagram, or flowchart"
+      - "科研示意图、电路图、系统架构图或流程图"
+  device_photo:
+    action: index
+    prompts:
+      - "a photograph of an electronic device, laboratory setup, component, or physical object"
+      - "电子器件、实验装置、元件或实物照片"
+  measurement_image:
+    action: index
+    prompts:
+      - "a scientific measurement image, microscopy image, heatmap, simulation image, or imaging result"
+      - "显微图、热图、仿真图、测试图像或测量结果图"
+  software_screenshot:
+    action: index
+    prompts:
+      - "a screenshot of software, a web page, a terminal, or a user interface"
+      - "软件界面、网页、终端或用户界面截图"
+  table:
+    action: table
+    prompts:
+      - "a table with rows and columns"
+      - "由行列组成的数据表格"
+  equation:
+    action: index
+    prompts:
+      - "a mathematical equation, formula, equation group, or derivation"
+      - "数学公式、方程组、推导或公式图片"
+  logo:
+    action: skip
+    prompts:
+      - "a company, institution, product, or conference logo"
+      - "公司、机构、产品或会议标志"
+  ui_icon:
+    action: skip
+    prompts:
+      - "a small user interface icon, button icon, social media icon, arrow, or bullet symbol"
+      - "小型界面图标、按钮图标、社交媒体图标、箭头或项目符号"
+  decorative:
+    action: skip
+    prompts:
+      - "a decorative background, texture, divider, page corner ornament, or slide decoration"
+      - "装饰背景、纹理、分隔线、页角装饰或幻灯片装饰"

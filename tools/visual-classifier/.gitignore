@@ -1,0 +1,10 @@
+# Bytecode, virtual environments, downloaded model weights and local datasets
+__pycache__/
+.pytest_cache/
+.venv/
+data/images/*
+!data/images/.gitkeep
+data/manifests/*.jsonl
+data/reviews/*.csv
+data/predictions/*.jsonl
+models/
