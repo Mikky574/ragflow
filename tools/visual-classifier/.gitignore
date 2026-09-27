@@ -7,4 +7,5 @@ data/images/*
 data/manifests/*.jsonl
 data/reviews/*.csv
 data/predictions/*.jsonl
+data/*.sqlite3
 models/

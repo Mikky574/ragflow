@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .classifier import SiglipZeroShotClassifier
+from .dataset import export_rows, upsert_rows
 from .taxonomy import load_taxonomy
 
 IMAGE_SUFFIXES = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
@@ -75,6 +76,17 @@ def export_review(args: argparse.Namespace) -> None:
     print(f"wrote {len(rows)} review rows to {output}")
 
 
+def import_manifest(args: argparse.Namespace) -> None:
+    count = upsert_rows(args.database, json_lines(Path(args.input)))
+    print(f"imported {count} candidates into {args.database}")
+
+
+def export_dataset(args: argparse.Namespace) -> None:
+    rows = export_rows(args.database)
+    write_json_lines(Path(args.output), rows)
+    print(f"exported {len(rows)} candidates from {args.database} to {args.output}")
+
+
 def import_review(args: argparse.Namespace) -> None:
     known_labels = set(load_taxonomy(args.taxonomy))
     labels: dict[str, str] = {}
@@ -136,6 +148,16 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--input", required=True)
     review_parser.add_argument("--output", required=True)
     review_parser.set_defaults(handler=export_review)
+
+    database_import_parser = subparsers.add_parser("import-manifest", help="upsert a JSONL manifest into the local SQLite dataset")
+    database_import_parser.add_argument("--input", required=True)
+    database_import_parser.add_argument("--database", default="data/visual-classifier.sqlite3")
+    database_import_parser.set_defaults(handler=import_manifest)
+
+    database_export_parser = subparsers.add_parser("export-dataset", help="export the local SQLite dataset as JSONL")
+    database_export_parser.add_argument("--database", default="data/visual-classifier.sqlite3")
+    database_export_parser.add_argument("--output", required=True)
+    database_export_parser.set_defaults(handler=export_dataset)
 
     import_parser = subparsers.add_parser("import-review", help="merge manually assigned CSV labels back into JSONL")
     import_parser.add_argument("--input", required=True)

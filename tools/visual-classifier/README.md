@@ -4,6 +4,8 @@
 
 当前不修改 DeepDOC、不调用生成式大模型，也不直接写入 Elasticsearch。只有分类稳定后，才在 DeepDOC 的图片块入库前调用它。
 
+本地 SQLite 数据库 `data/visual-classifier.sqlite3` 是候选区域、模型预测和人工标签的持久化来源；JSONL 和 CSV 只用于导入、导出和人工审核。
+
 ## 分类目标
 
 | 类别 | `index_action` | 用途 |
@@ -50,16 +52,33 @@ uv run python -m visual_classifier create-manifest \
   --output data/manifests/candidates.jsonl
 ```
 
-3. 用小模型生成预测：
+3. 写入本地数据集库：
+
+```bash
+uv run python -m visual_classifier import-manifest \
+  --input data/manifests/candidates.jsonl
+```
+
+后续可随时导出数据库内容：
+
+```bash
+uv run python -m visual_classifier export-dataset \
+  --output data/manifests/candidates-from-db.jsonl
+```
+
+4. 用小模型生成预测：
 
 ```bash
 uv run python -m visual_classifier predict \
   --input data/manifests/candidates.jsonl \
   --output data/predictions/baseline.jsonl \
   --device cuda:0
+
+uv run python -m visual_classifier import-manifest \
+  --input data/predictions/baseline.jsonl
 ```
 
-4. 导出人工复核表：
+5. 导出人工复核表：
 
 ```bash
 uv run python -m visual_classifier export-review \
@@ -69,13 +88,16 @@ uv run python -m visual_classifier export-review \
 
 在 CSV 的 `label` 列填写最终类别。低于默认阈值 `0.55` 的样本会标为 `review`，不会自动进入或排除检索。
 
-5. 将填写好的 CSV 导回 JSONL，再评测：
+6. 将填写好的 CSV 导回 JSONL，再评测：
 
 ```bash
 uv run python -m visual_classifier import-review \
   --input data/predictions/baseline.jsonl \
   --review data/reviews/baseline.csv \
   --output data/predictions/labelled-baseline.jsonl
+
+uv run python -m visual_classifier import-manifest \
+  --input data/predictions/labelled-baseline.jsonl
 
 uv run python -m visual_classifier evaluate \
   --input data/predictions/labelled-baseline.jsonl

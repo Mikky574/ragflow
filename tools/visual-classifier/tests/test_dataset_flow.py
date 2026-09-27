@@ -5,7 +5,13 @@ import json
 
 from PIL import Image
 
-from visual_classifier.__main__ import create_manifest, export_review, import_review
+from visual_classifier.__main__ import (
+    create_manifest,
+    export_dataset,
+    export_review,
+    import_manifest,
+    import_review,
+)
 
 
 def test_manifest_and_review_round_trip(tmp_path, monkeypatch):
@@ -18,6 +24,11 @@ def test_manifest_and_review_round_trip(tmp_path, monkeypatch):
     row = json.loads(manifest.read_text(encoding="utf-8").strip())
     assert row["bbox"] is None
     assert row["label"] == ""
+    database = tmp_path / "dataset.sqlite3"
+    import_manifest(Namespace(input=manifest, database=database))
+    exported = tmp_path / "exported.jsonl"
+    export_dataset(Namespace(database=database, output=exported))
+    assert json.loads(exported.read_text(encoding="utf-8").strip())["id"] == row["id"]
 
     prediction = tmp_path / "prediction.jsonl"
     row.update(visual_type="equation", visual_score=0.9, index_action="index")
