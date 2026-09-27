@@ -29,6 +29,11 @@ uv run python download_papers.py
 cd /path/to/ragflow
 export PYTHONPATH="$PWD"
 export CUDA_VISIBLE_DEVICES=0
+export NLTK_DATA="$HOME/nltk_data"
+
+# 首次执行时准备 DeepDOC 分词资源；使用代理时需要显式允许 NLTK 走代理。
+NLTK_ALLOW_PROXIED_URLOPEN=1 python -m nltk.downloader -d "$NLTK_DATA" punkt_tab wordnet omw-1.4
+
 uv run python tools/deepdoc-region-exporter/extract_regions.py \
   --input tools/deepdoc-region-exporter/source_papers \
   --output tools/deepdoc-region-exporter/candidates \

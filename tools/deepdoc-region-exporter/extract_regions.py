@@ -13,6 +13,31 @@ from PIL import Image
 LAYOUT_TYPES = {"figure", "table", "equation"}
 
 
+def ensure_nltk_resources() -> None:
+    import nltk
+
+    required = {"punkt_tab": "tokenizers/punkt_tab", "wordnet": "corpora/wordnet"}
+    missing = [name for name, resource in required.items() if not _nltk_resource_exists(nltk, resource)]
+    if missing:
+        names = " ".join(missing)
+        raise SystemExit(
+            f"missing NLTK resources: {names}. Install them once with:\n"
+            "NLTK_ALLOW_PROXIED_URLOPEN=1 python -m nltk.downloader punkt_tab wordnet omw-1.4"
+        )
+
+
+def _nltk_resource_exists(nltk: Any, resource: str) -> bool:
+    try:
+        nltk.data.find(resource)
+        return True
+    except LookupError:
+        try:
+            nltk.data.find(f"{resource}.zip")
+            return True
+        except LookupError:
+            return False
+
+
 def area(rect: tuple[float, float, float, float]) -> float:
     left, top, right, bottom = rect
     return max(0.0, right - left) * max(0.0, bottom - top)
@@ -118,6 +143,7 @@ def main() -> None:
     parser.add_argument("--min-edge", type=int, default=24)
     parser.add_argument("--types", nargs="+", choices=sorted(LAYOUT_TYPES), default=sorted(LAYOUT_TYPES))
     args = parser.parse_args()
+    ensure_nltk_resources()
 
     input_root = Path(args.input)
     pdfs = [input_root] if input_root.is_file() and input_root.suffix.lower() == ".pdf" else sorted(path for path in input_root.rglob("*") if path.suffix.lower() == ".pdf")
